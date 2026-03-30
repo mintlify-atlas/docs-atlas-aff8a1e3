@@ -1,0 +1,91 @@
+---
+title: "Introduction"
+description: "What stdai is and why it exists"
+---
+
+Unix gave us `stdin`, `stdout`, and `stderr` — input, output, and diagnostics. stdai adds the fourth stream: **durable work that should survive beyond the immediate response.**
+
+Agentic systems produce work that doesn't fit neatly into those three streams: research findings, plans, decisions, handoffs, fact checks, investigation notes. That work needs to survive across sessions and agents, carry clear provenance, and be searchable later. stdai fills that gap.
+
+```bash
+python3 research.py | stdai write --kind research --tag security | python3 fact_checker.py
+```
+
+stdai acts as a **semantic tee** — it reads work from stdin or direct input, stores it as a signed, immutable artifact, and forwards the original content unchanged so your pipelines keep working.
+
+## Key properties
+
+<CardGroup cols={2}>
+  <Card title="Cryptographically signed" icon="signature">
+    Every artifact is signed with an Ed25519 identity. Modifying content or metadata after signing breaks verification, giving you tamper detection without a central authority.
+  </Card>
+  <Card title="Immutable and content-addressed" icon="lock">
+    Artifacts are stored in a content-addressed blob store (SHA-256). Once written, content cannot be changed — only new artifacts can be created.
+  </Card>
+  <Card title="Full-text searchable" icon="magnifying-glass">
+    A SQLite FTS5 index backs every artifact. Search by content, kind, tag, task, agent, or project — scoped to the current project or globally.
+  </Card>
+  <Card title="Lineage-linked" icon="diagram-project">
+    Link artifacts to their upstream sources with `--based-on`. This builds a provenance DAG that crosses project boundaries, so you can trace any conclusion back to its origin.
+  </Card>
+</CardGroup>
+
+## What to capture
+
+stdai is designed for work that agents and pipelines produce but that gets lost when a session ends:
+
+- **Research** — findings from reading code, docs, or external sources
+- **Plans** — proposed approaches before implementation begins
+- **Decisions** — the reasoning behind a choice, not just the outcome
+- **Handoffs** — context passed between agents or sessions
+- **Fact checks** — verification results linked back to the claims they checked
+- **Investigation notes** — intermediate findings during debugging or analysis
+
+<Note>
+  stdai does not replace logs or stdout. It captures *work* — structured findings with provenance — not raw process output.
+</Note>
+
+## Architecture overview
+
+stdai uses a **single global store** at `~/.stdai/` that auto-creates on first use. There is no per-project initialization step.
+
+**Artifacts** are the core unit. Each artifact has:
+- A ULID identifier (sortable, globally unique)
+- A `kind` field (e.g. `research`, `note`, `decision`)
+- Immutable content stored as a SHA-256 addressed blob
+- Automatically captured metadata: working directory, git repo, branch, commit, hostname, timestamps
+- An optional set of `based_on` references to parent artifact IDs
+- A cryptographic signature from a named **identity**
+
+**Identities** are Ed25519 key pairs stored locally in `~/.stdai/identities/`. Each identity has a human-readable label and an Ethereum-style address (`stdai:` prefix + 40 hex chars). You set a default identity for your session with `$STDAI_IDENTITY`.
+
+**Project context** is detected automatically from the git repo name, or falls back to the current directory name. All reads default to the current project; use `--all` to search globally.
+
+```
+~/.stdai/
+  objects/          Content-addressed blob store (SHA-256)
+  stdai.db          SQLite database (metadata, lineage, FTS index)
+  config.toml       Configuration
+  identities/       Ed25519 key pairs
+```
+
+<Info>
+  The store location can be overridden with `$STDAI_HOME`. stdai also respects `$XDG_DATA_HOME` as a fallback, using `$XDG_DATA_HOME/stdai/`.
+</Info>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install stdai with a one-liner or build from source
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Write your first signed artifact in under 2 minutes
+  </Card>
+  <Card title="Artifacts" icon="box" href="/concepts/artifacts">
+    Deep dive into artifact structure and metadata
+  </Card>
+  <Card title="Identity and signing" icon="key" href="/concepts/identity-signing">
+    How Ed25519 identities and signature verification work
+  </Card>
+</CardGroup>

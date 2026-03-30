@@ -1,0 +1,202 @@
+---
+title: "Agent integration"
+description: "Use stdai as a skill inside AI coding agents"
+---
+
+AI coding agents produce work that should outlast the current session: research
+findings, fact checks, plans, decisions, investigation notes, and handoffs.
+stdai gives agents a standard local channel for that work — durable, signed,
+searchable, and linked by lineage.
+
+## The core skill file
+
+`skills/core/SKILL.md` is the canonical reference for any agent that needs to
+use stdai. It contains:
+
+- Identity setup and signing instructions
+- When to write artifacts
+- All write, find, list, show, upstream, downstream, and verify commands
+- The recommended workflow for checking existing work before starting new work
+- JSON output conventions
+
+Install the skill into an agent session so it can load the full command
+reference automatically:
+
+```bash
+# The skill file lives at:
+skills/core/SKILL.md
+```
+
+Agents that load this file know exactly which flags are available, how pipe
+mode works, and how to build lineage chains — without needing to read the full
+README.
+
+## When to write artifacts
+
+Write an artifact whenever you produce work worth preserving beyond the current
+response:
+
+- **Research findings** — API docs, code analysis, dependency investigation
+- **Fact checks** — verification of claims or assumptions
+- **Plans and decisions** — architecture choices, implementation strategies
+- **Investigation notes** — debugging steps, root cause analysis
+- **Handoffs** — context for the next session or agent
+- **Summaries** — distilled conclusions from multiple sources
+
+## Recommended workflow
+
+The recommended pattern is: **check first, then write**.
+
+Before starting new work on a topic, search for existing artifacts. If relevant
+prior work exists, read it and link your new work to it. This builds a lineage
+chain that makes provenance traceable across sessions.
+
+```bash
+# Check for prior work before starting
+stdai find "token rotation" --json
+
+# Read an existing artifact
+stdai show 01HABC... --content-only
+
+# Write new work linked to the existing artifact
+stdai write --kind fact_check \
+  --content "Confirmed: no token rotation on refresh" \
+  --based-on 01HABC... --json
+```
+
+<Note>
+Always use `--json` for machine-readable output. In direct mode (`--content`), `--json` prints the full artifact object. In pipe mode with `--no-forward`, `--json` also prints the full artifact as JSON. In standard pipe mode (forwarding active), stdout carries the original content and the artifact ID goes to stderr.
+</Note>
+
+## Setting up identity for an agent session
+
+Every write must be signed with an Ed25519 identity. Create one once per agent
+and export the address for reuse:
+
+```bash
+# Create a signing identity for this agent
+stdai identity new --label "cursor"
+# → address: stdai:a3b7c9d8e1f2...
+
+# Set it for the session
+export STDAI_IDENTITY=stdai:a3b7c9d8e1f2...
+```
+
+Once `$STDAI_IDENTITY` is set, all writes in that session are signed
+automatically. You can also pass the identity per-command with `--identity`:
+
+```bash
+stdai write --kind note --content "auth middleware skips role check" \
+  --identity stdai:a3b7c9d8e1f2...
+```
+
+## Attributing work with `--agent`, `--task`, and `--name`
+
+Use these flags to make artifacts queryable by their origin:
+
+| Flag | Purpose |
+|------|---------|
+| `--agent` | Agent identifier (e.g. `cursor`, `claude-code`) |
+| `--task` | Task or issue identifier (e.g. `auth-bug`, `PROJ-42`) |
+| `--name` | Human-readable label for the artifact |
+
+```bash
+stdai write --kind investigation \
+  --content "Token refresh endpoint reuses expired tokens" \
+  --tag security \
+  --agent cursor \
+  --task auth-bug \
+  --name "Auth refresh vulnerability finding" \
+  --json
+```
+
+You can then find all artifacts from a specific task:
+
+```bash
+stdai find --task auth-bug --json
+```
+
+## JSON output
+
+Use `--json` on any command that returns artifacts for machine-readable output.
+`write` emits a single artifact object; `find`, `list`, `upstream`, and
+`downstream` emit JSON arrays; `context` and `projects` emit structured objects.
+
+```bash
+# Write and capture the full artifact as JSON
+stdai write --kind research \
+  --content "OAuth refresh lacks PKCE" \
+  --tag security --agent cursor --json
+
+# Search and parse results
+stdai find "PKCE" --json
+
+# Walk lineage as JSON
+stdai upstream 01HXYZ... --recursive --json
+```
+
+## Complete agent workflow example
+
+This example shows a multi-step investigation where the agent checks for
+existing work before starting, writes linked artifacts, and emits machine-
+readable output throughout.
+
+<Steps>
+  <Step title="Set up identity">
+    ```bash
+    stdai identity new --label "cursor"
+    export STDAI_IDENTITY=stdai:a3b7c9d8e1f2...
+    ```
+  </Step>
+
+  <Step title="Check for existing research">
+    Before starting, search for prior work on the topic:
+
+    ```bash
+    stdai find "token refresh" --json
+    ```
+
+    If results come back, read the most relevant one:
+
+    ```bash
+    stdai show 01HABC... --content-only
+    ```
+  </Step>
+
+  <Step title="Write new research linked to prior work">
+    Link your new artifact to the existing one with `--based-on`:
+
+    ```bash
+    id1=$(stdai write --kind research \
+      --content "OAuth refresh endpoint allows reuse of expired refresh tokens" \
+      --tag security --agent cursor --task auth-bug --json | jq -r '.id')
+    ```
+  </Step>
+
+  <Step title="Write a fact check linked to the research">
+    ```bash
+    id2=$(stdai write --kind fact_check \
+      --content "Confirmed: no token rotation on refresh — reproduces in staging" \
+      --based-on "$id1" --agent cursor --task auth-bug --json | jq -r '.id')
+    ```
+  </Step>
+
+  <Step title="Write a decision linked to the fact check">
+    ```bash
+    stdai write --kind decision \
+      --content "Implement refresh token rotation in v2 auth service" \
+      --based-on "$id2" --agent cursor --task auth-bug --json
+    ```
+  </Step>
+
+  <Step title="Verify and trace the lineage">
+    ```bash
+    # Verify signatures
+    stdai verify "$id1" --json
+    stdai verify "$id2" --json
+
+    # Walk the full ancestor chain
+    stdai upstream "$id2" --recursive --json
+    ```
+  </Step>
+</Steps>

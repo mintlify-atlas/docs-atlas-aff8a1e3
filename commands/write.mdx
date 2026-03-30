@@ -1,0 +1,173 @@
+---
+title: "stdai write"
+description: "Store an artifact from content or stdin pipe"
+---
+
+`stdai write` captures work and stores it as a signed, immutable artifact. You can feed it content directly with `--content` or pipe content from another command. In pipe mode, the original content flows through to stdout unchanged so your pipeline keeps working.
+
+<Info>
+Every write requires a signing identity. Set `$STDAI_IDENTITY` for your session or pass `--identity` per command. See [identity management](/commands/identity) to create one.
+</Info>
+
+## Flags
+
+<ParamField path="--kind" type="string">
+  Artifact kind. Common values: `research`, `note`, `fact_check`, `summary`, `handoff`, `plan`, `decision`, `investigation`. You can use any string — these are conventions, not an enum.
+</ParamField>
+
+<ParamField path="--content" type="string">
+  Content to store. When provided, switches to **direct mode** — stdin is not read and nothing is forwarded to stdout. Mutually exclusive with piped input.
+</ParamField>
+
+<ParamField path="--based-on" type="string">
+  ID of a parent artifact this work is based on. Repeatable — pass the flag multiple times to declare multiple parents. Creates lineage edges in the provenance graph. Works across projects.
+</ParamField>
+
+<ParamField path="--tag" type="string">
+  Tag to apply to the artifact. Repeatable. Use tags to group related artifacts for later retrieval with `stdai find --tag` or `stdai list --tag`.
+</ParamField>
+
+<ParamField path="--agent" type="string">
+  Agent identifier. Use this to attribute the artifact to a specific agent or tool.
+</ParamField>
+
+<ParamField path="--task" type="string">
+  Task identifier. Group artifacts that belong to the same unit of work for filtering with `stdai find --task`.
+</ParamField>
+
+<ParamField path="--name" type="string">
+  Human-readable name for the artifact. Displayed in `stdai show` output.
+</ParamField>
+
+<ParamField path="--format" type="string" default="auto">
+  Content format hint. Accepted values: `text`, `json`, `md`, `auto`. When set to `auto` (the default), stdai detects the format from the content itself.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output the stored artifact as a JSON object. In direct mode, prints the full artifact. In pipe mode with `--no-forward`, also outputs the full artifact as JSON. In standard pipe mode (forwarding enabled), the content is forwarded to stdout and the artifact ID is emitted to stderr — `--json` has no additional effect in that case.
+</ParamField>
+
+<ParamField path="--no-forward" type="boolean">
+  Capture only — do not forward stdin content to stdout. Useful when you want to intercept a pipe without passing it along.
+</ParamField>
+
+<ParamField path="--identity" type="string">
+  Signing identity address to use for this write. Overrides `$STDAI_IDENTITY`. Format: `stdai:` followed by 40 hex characters.
+</ParamField>
+
+## Pipe mode vs direct mode
+
+stdai has two content modes depending on how you provide input.
+
+**Pipe mode** — omit `--content` and pipe content through stdin:
+
+- Content is read from stdin and stored as an artifact
+- The original bytes are forwarded to stdout unchanged (unless you pass `--no-forward`)
+- The artifact ID is emitted to stderr so it doesn't pollute your pipeline
+- `--json` has no additional effect when forwarding is active (stdout is already carrying the original content)
+
+**Direct mode** — pass `--content "..."`:
+
+- Content comes from the flag value
+- Nothing is read from stdin
+- Output is the artifact ID (plain text) or the full artifact (with `--json`)
+
+<Tip>
+Use pipe mode to instrument existing pipelines without changing their behavior. Use direct mode when you're writing notes, decisions, or handoffs from agent logic.
+</Tip>
+
+## Examples
+
+### Store a note directly
+
+```bash
+stdai write --kind note --content "guest sessions break when middleware assumes user role"
+```
+
+### Pipe a script's output through stdai
+
+```bash
+python3 research.py | stdai write --kind research --tag security | python3 fact_checker.py
+```
+
+The research output flows from `research.py` → stored as artifact → forwarded to `fact_checker.py`.
+
+### Capture without forwarding
+
+```bash
+python3 producer.py | stdai write --kind investigation --no-forward > /dev/null
+```
+
+### Link to a parent artifact
+
+```bash
+id1=$(stdai write --kind research --content "OAuth token refresh lacks PKCE")
+
+stdai write --kind fact_check \
+  --content "Confirmed: PKCE missing from all refresh endpoints" \
+  --based-on "$id1"
+```
+
+### Multiple parents, tags, and metadata
+
+```bash
+stdai write --kind decision \
+  --content "Proceed with PKCE implementation in v1" \
+  --based-on "$id1" \
+  --based-on "$id2" \
+  --tag auth --tag security \
+  --task auth-bug \
+  --agent cursor \
+  --name "PKCE rollout decision"
+```
+
+### JSON output (direct mode)
+
+```bash
+stdai write --kind note --content "hello" --json
+```
+
+```json
+{
+  "id": "01HXYZ1234ABCDEF567890ABCD",
+  "content_hash": "abcdef1234...",
+  "kind": "note",
+  "name": null,
+  "content_format": "text",
+  "created_at": "2024-01-15T10:30:00Z",
+  "size_bytes": 5,
+  "session_id": "abc123",
+  "agent_id": null,
+  "task_id": null,
+  "cwd": "/home/user/projects/my-api",
+  "repo_root": "/home/user/projects/my-api",
+  "repo_name": "my-api",
+  "git_branch": "main",
+  "git_commit": "d3adb33f",
+  "hostname": "devbox",
+  "source_mode": "direct",
+  "preview": "hello",
+  "project": "my-api",
+  "signature": "a1b2c3d4...",
+  "signer_address": "stdai:a3b7c9d8e1f2345678901234567890ab12345678",
+  "signer_pubkey": "9f8e7d6c...",
+  "tags": [],
+  "based_on": []
+}
+```
+
+### Specify identity per command
+
+```bash
+stdai write --kind handoff \
+  --content "Handoff to next agent" \
+  --identity stdai:a3b7c9d8e1f2345678901234567890ab12345678
+```
+
+## Identity resolution
+
+stdai resolves the signing identity in this order:
+
+1. `--identity <address>` flag
+2. `$STDAI_IDENTITY` environment variable
+3. If neither is set, the command fails with instructions to create an identity

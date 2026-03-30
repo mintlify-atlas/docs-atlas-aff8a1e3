@@ -1,0 +1,150 @@
+---
+title: "Cross-project work"
+description: "Reference and search artifacts across project boundaries"
+---
+
+stdai stores all artifacts in a single global store at `~/.stdai/`. Every
+artifact carries the project context it was written in, but lineage crosses
+project boundaries naturally — an artifact in one project can be a parent of
+an artifact in a completely different project.
+
+## How project context works
+
+When you write an artifact, stdai automatically tags it with the current
+project, detected in this order:
+
+1. `$STDAI_PROJECT` environment variable
+2. Git repo name (`git rev-parse --show-toplevel` basename)
+3. Current working directory basename
+
+`find` and `list` default to showing artifacts from the current project. This
+keeps your searches focused without any extra flags. To look beyond the current
+project, use `--all` or `--project`.
+
+## Scoping searches
+
+```bash
+# Current project only (default)
+stdai find "token rotation"
+stdai list
+
+# All projects
+stdai find "token rotation" --all
+stdai list --all
+
+# A specific project by name
+stdai find "token rotation" --project auth-service
+stdai list --project api-gateway
+```
+
+## Seeing all known projects
+
+```bash
+stdai projects
+stdai projects --json
+```
+
+This shows every project that has at least one artifact in the global store,
+along with artifact counts.
+
+## Referencing work across projects with `--based-on`
+
+`--based-on` accepts any artifact ID regardless of which project it belongs to.
+You can write an artifact in `api-gateway` that is directly linked to research
+done in `auth-service`:
+
+```bash
+# In auth-service: write research
+id=$(stdai write --kind research --content "Session tokens need rotation")
+
+# In api-gateway: write a plan based on that research
+stdai write --kind plan \
+  --content "Integrate token rotation from auth-service" \
+  --based-on "$id"
+```
+
+The lineage link is recorded globally. `stdai upstream` and `stdai downstream`
+always operate globally, so you can trace a full lineage chain that spans
+multiple projects.
+
+## `upstream` and `downstream` are always global
+
+`show`, `upstream`, and `downstream` never filter by project — artifact IDs are
+globally unique, so there is no ambiguity:
+
+```bash
+stdai upstream 01HXYZ...              # Direct parents, any project
+stdai upstream 01HXYZ... --recursive  # Full ancestor graph
+stdai downstream 01HXYZ... --recursive
+```
+
+## Cross-project workflow walkthrough
+
+This example follows the pattern from the README: research done in
+`auth-service` is referenced by a plan in `api-gateway`.
+
+<Steps>
+  <Step title="Set up identity (one time)">
+    ```bash
+    stdai identity new --label "platform-agent"
+    export STDAI_IDENTITY=stdai:...
+    ```
+  </Step>
+
+  <Step title="Write research in auth-service">
+    ```bash
+    cd ~/projects/auth-service
+    id=$(stdai write --kind research \
+      --content "Session tokens need rotation" \
+      --tag security)
+    echo "Research ID: $id"
+    ```
+
+    stdai tags this artifact with project `auth-service` automatically.
+  </Step>
+
+  <Step title="Reference the research from api-gateway">
+    ```bash
+    cd ~/projects/api-gateway
+    stdai write --kind plan \
+      --content "Integrate token rotation from auth-service" \
+      --based-on "$id"
+    ```
+
+    This plan is tagged to project `api-gateway` but its lineage points back to
+    the `auth-service` research artifact.
+  </Step>
+
+  <Step title="Search globally to see both artifacts">
+    ```bash
+    stdai find "token rotation" --all
+    ```
+  </Step>
+
+  <Step title="List everything you've worked on today">
+    ```bash
+    stdai list --all
+    ```
+  </Step>
+
+  <Step title="Trace the full lineage across projects">
+    From the plan in `api-gateway`, walk back to the research in `auth-service`:
+
+    ```bash
+    stdai upstream <plan_id> --recursive --json
+    ```
+  </Step>
+</Steps>
+
+## Overriding project context
+
+If the auto-detected project name is wrong — for example, you are running from
+a subdirectory or a non-git workspace — set it explicitly:
+
+```bash
+export STDAI_PROJECT=auth-service
+stdai write --kind note --content "override example"
+```
+
+This is also useful in CI environments where the working directory may not
+match the logical project name.

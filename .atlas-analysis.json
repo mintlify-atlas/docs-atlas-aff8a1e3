@@ -1,0 +1,99 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "stdai",
+  "projectDescription": "A CLI primitive that captures agent work as cryptographically signed, durable artifacts with full-text search and provenance lineage.",
+  "theme": "luma",
+  "primaryColor": "#242b2c",
+  "lightColor": "#6a6a6d",
+  "darkColor": "#ebeaea",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/artifacts",
+              "concepts/identity-signing",
+              "concepts/lineage",
+              "concepts/project-context",
+              "concepts/storage"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/agent-integration",
+              "guides/pipelines",
+              "guides/cross-project-work",
+              "guides/verification"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Command Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "commands/write",
+              "commands/find",
+              "commands/show",
+              "commands/list",
+              "commands/lineage",
+              "commands/identity",
+              "commands/verify",
+              "commands/diagnostics"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment",
+              "configuration/migration"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Cryptographically signed artifacts using Ed25519 key pairs",
+    "Pipe-transparent: stdin forwarded to stdout while capturing work",
+    "Full-text search across artifacts with project scoping",
+    "Provenance DAG via --based-on lineage links",
+    "Automatic metadata capture (git repo, branch, commit, cwd, hostname)",
+    "Content-addressed blob store with SHA-256 deduplication",
+    "SQLite FTS5 full-text search index",
+    "Global store with cross-project lineage traversal",
+    "ULID-based sortable artifact IDs",
+    "JSON output for machine-readable agent integration"
+  ],
+  "publicApiSurface": [
+    "stdai write --kind <kind> --content <text> [--based-on <id>] [--tag <tag>] [--identity <addr>]",
+    "stdai find <query> [--kind <kind>] [--tag <tag>] [--all] [--project <name>]",
+    "stdai show <id> [--json] [--content-only]",
+    "stdai list [--kind <kind>] [--tag <tag>] [--all] [--limit <n>]",
+    "stdai upstream <id> [--recursive] [--json]",
+    "stdai downstream <id> [--recursive] [--json]",
+    "stdai identity new --label <label>",
+    "stdai identity list [--json]",
+    "stdai identity show <address>",
+    "stdai identity export <address>",
+    "stdai identity import --pubkey <hex> [--label <label>]",
+    "stdai verify <id> [--json]",
+    "stdai projects [--json]",
+    "stdai context [--json]",
+    "stdai doctor"
+  ]
+}

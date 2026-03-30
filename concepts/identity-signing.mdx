@@ -1,0 +1,152 @@
+---
+title: "Identity and signing"
+description: "Ed25519 cryptographic identities for artifact provenance"
+---
+
+Every artifact written by stdai must be signed with an Ed25519 identity. Signatures bind the signer to the content: if content or metadata changes after signing, verification fails.
+
+## What an identity is
+
+An identity is an Ed25519 key pair with a derived address. The address is computed as:
+
+```
+stdai: + hex(SHA-256(public_key_bytes)[0..20])
+```
+
+This produces a 46-character string like `stdai:a3b7c9d8e1f2a5b8c3d6e9f0a2b5c8d1e4f7a0b3` — a `stdai:` prefix followed by 40 hex characters.
+
+Identities are stored locally under `~/.stdai/identities/`. Each identity lives in its own subdirectory named after the bare hex address (without the `stdai:` prefix):
+
+```
+~/.stdai/
+  identities/
+    a3b7c9d8e1f2a5b8c3d6e9f0a2b5c8d1e4f7a0b3/
+      secret.key      Ed25519 secret key (hex, mode 0600)
+      public.key      Ed25519 public key (hex)
+      identity.toml   address, label, created_at
+```
+
+## Creating an identity
+
+<Steps>
+  <Step title="Create a key pair">
+    ```bash
+    stdai identity new --label "security-auditor"
+    ```
+
+    stdai generates a new Ed25519 key pair, derives the address, and writes the files under `~/.stdai/identities/`.
+  </Step>
+  <Step title="Set it for your session">
+    ```bash
+    export STDAI_IDENTITY=stdai:a3b7c9d8e1f2a5b8c3d6e9f0a2b5c8d1e4f7a0b3
+    ```
+
+    All subsequent `stdai write` calls in this shell session will use this identity automatically.
+  </Step>
+  <Step title="Verify it works">
+    ```bash
+    stdai identity list
+    ```
+  </Step>
+</Steps>
+
+## Identity resolution order
+
+When you run `stdai write`, the signing identity is resolved in this order:
+
+1. `--identity <address>` flag on the command line
+2. `$STDAI_IDENTITY` environment variable
+3. If neither is set: the command fails with instructions to create an identity
+
+<Warning>
+  Anonymous writes are not allowed. Every artifact must be signed. If you get an `IdentityRequired` error, set `$STDAI_IDENTITY` or pass `--identity` explicitly.
+</Warning>
+
+## The `identity.toml` file
+
+Each identity directory contains an `identity.toml` with three fields:
+
+```toml
+address = "stdai:a3b7c9d8e1f2a5b8c3d6e9f0a2b5c8d1e4f7a0b3"
+label = "security-auditor"
+created_at = "2026-03-30T14:22:05Z"
+```
+
+| Field | Description |
+|---|---|
+| `address` | Full `stdai:`-prefixed address |
+| `label` | Optional human-readable name set at creation |
+| `created_at` | ISO 8601 UTC timestamp |
+
+## What signing covers
+
+The signing payload is:
+
+```
+SHA-256(content_hash + NUL + kind + NUL + created_at + NUL + agent_id)
+```
+
+The resulting hash is signed with the Ed25519 private key. The hex-encoded 64-byte signature is stored in the artifact's `signature` field alongside the `signer_address` and `signer_pubkey`.
+
+Modifying the content, changing the kind, or altering the timestamp after the fact will cause `stdai verify` to return a failure.
+
+## Verifying artifacts
+
+```bash
+stdai verify 01HXYZ...
+```
+
+Exit code `0` means verified (or unsigned/legacy). Exit code `1` means the signature does not match.
+
+```bash
+stdai verify 01HXYZ... --json
+```
+
+## Trust model
+
+stdai uses a local honor system. Any local process can read and use any private key stored in `~/.stdai/identities/`. There is no central authority or key escrow.
+
+Signatures serve two purposes:
+
+- **Tamper detection**: anyone can verify that content and metadata have not changed since the artifact was written
+- **Attribution**: the signer address in each artifact tells you which identity created it
+
+<Note>
+  Artifacts written before v1.2 have `NULL` in the `signature`, `signer_address`, and `signer_pubkey` columns. They are accessible normally, and `stdai verify` returns exit code `0` for these legacy unsigned artifacts.
+</Note>
+
+## Importing external public keys
+
+You can import another agent's public key for verification without having its secret key:
+
+```bash
+stdai identity import --pubkey <64-hex-chars> --label "remote-agent"
+```
+
+An imported identity has `has_secret: false`. You can use it to verify artifacts signed by the remote agent, but you cannot sign new artifacts with it.
+
+To get a public key from a local identity:
+
+```bash
+stdai identity export stdai:a3b7c9d8...
+```
+
+## Managing identities
+
+```bash
+# List all local identities
+stdai identity list
+
+# Show detail for one identity
+stdai identity show stdai:a3b7c9d8...
+
+# Export public key for sharing
+stdai identity export stdai:a3b7c9d8...
+
+# Import an external public key
+stdai identity import --pubkey <64-hex-chars> --label "remote-agent"
+```
+
+<Tip>
+  You can use a short prefix with `stdai identity show` — stdai matches the prefix against local identity addresses and resolves it if unambiguous.
+</Tip>

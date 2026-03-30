@@ -1,0 +1,84 @@
+---
+title: "Installation"
+description: "Install stdai on your system"
+---
+
+stdai is a single self-contained binary. There are three ways to install it.
+
+<CodeGroup>
+
+```bash One-liner
+curl -sSf https://raw.githubusercontent.com/ooboai/stdai/main/install.sh | bash
+```
+
+```bash From source (Git)
+cargo install --git https://github.com/ooboai/stdai.git --locked
+```
+
+```bash From a local checkout
+cargo install --path .
+```
+
+</CodeGroup>
+
+## System requirements
+
+The one-liner install script uses `cargo` to build from source, so the Rust toolchain is required for all three methods.
+
+<Info>
+  Install the Rust toolchain from [rustup.rs](https://rustup.rs) if `cargo` is not already available on your system.
+</Info>
+
+After installation, make sure `~/.cargo/bin` is in your `PATH`. The install script will warn you if `stdai` is not found after building.
+
+## No setup required
+
+There is no `init` command and no configuration file to create. The global store at `~/.stdai/` auto-creates the first time you run any command that writes data.
+
+```
+~/.stdai/
+  objects/          Content-addressed blob store (SHA-256)
+  stdai.db          SQLite database (metadata, lineage, FTS index)
+  config.toml       Configuration
+  identities/       Ed25519 key pairs
+```
+
+<Tip>
+  Override the store location by setting `$STDAI_HOME`. stdai also respects `$XDG_DATA_HOME` as a fallback, placing the store at `$XDG_DATA_HOME/stdai/`.
+</Tip>
+
+## Verify the installation
+
+<Steps>
+  <Step title="Check the binary is on your PATH">
+    ```bash
+    stdai --version
+    ```
+
+    You should see output like:
+
+    ```
+    stdai 1.2.0
+    ```
+  </Step>
+  <Step title="Run the diagnostic check">
+    ```bash
+    stdai doctor
+    ```
+
+    This runs diagnostic checks on the global store and confirms everything is working correctly.
+  </Step>
+  <Step title="Write a test artifact">
+    ```bash
+    stdai identity new --label "my-agent"
+    export STDAI_IDENTITY=stdai:a3b7c9d8e1f2...
+    stdai write --kind note --content "hello world"
+    ```
+
+    You should see the new artifact's ID printed to stdout. The global store has been initialized and your first artifact is stored.
+  </Step>
+</Steps>
+
+<Note>
+  The `stdai identity new` step is required before any `write`. Every artifact must be signed with an Ed25519 identity. See the [Quickstart](/quickstart) for a full walkthrough.
+</Note>

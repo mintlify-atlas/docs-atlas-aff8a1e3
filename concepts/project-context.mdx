@@ -1,0 +1,75 @@
+---
+title: "Project context"
+description: "How artifacts are scoped to projects automatically"
+---
+
+Every artifact stdai writes is tagged with a project name. stdai detects the project from the environment automatically — you don't need to pass a flag or run an init command.
+
+## Detection order
+
+When stdai runs, it determines the current project by checking these sources in order:
+
+1. **`$STDAI_PROJECT` environment variable** — if set and non-empty, this wins
+2. **Git repo name** — the basename of `git rev-parse --show-toplevel` (for example, a repo at `/home/user/projects/auth-service` produces `auth-service`)
+3. **Current working directory basename** — used when there is no git repository
+
+<Tip>
+  Set `$STDAI_PROJECT` in CI or agent environments where the working directory or git configuration may not match what you want to record.
+</Tip>
+
+## How scoping affects commands
+
+`stdai find` and `stdai list` default to artifacts from the current project only. This keeps results relevant when you're working in a specific codebase.
+
+| Command | Default scope | Override |
+|---|---|---|
+| `stdai find` | Current project | `--all` or `--project <name>` |
+| `stdai list` | Current project | `--all` or `--project <name>` |
+| `stdai show` | Global (ID is unique) | — |
+| `stdai upstream` | Global | — |
+| `stdai downstream` | Global | — |
+
+```bash
+# Scoped to current project
+stdai find "token refresh"
+
+# All projects
+stdai find "token refresh" --all
+
+# Specific project
+stdai find "token refresh" --project auth-service
+```
+
+## Listing projects
+
+`stdai projects` lists every project that has at least one artifact in the global store, along with a count:
+
+```bash
+stdai projects
+stdai projects --json
+```
+
+## Checking the current context
+
+`stdai context` shows what stdai has detected about your current environment:
+
+```bash
+stdai context
+stdai context --json
+```
+
+Example JSON output:
+
+```json
+{
+  "project": "auth-service",
+  "repo_root": "/home/user/projects/auth-service",
+  "global_store": "/home/user/.stdai",
+  "project_artifacts": 17,
+  "total_artifacts": 42
+}
+```
+
+<Note>
+  `show`, `upstream`, and `downstream` always operate globally. Artifact IDs are globally unique ULIDs, so project scoping would only exclude results unnecessarily.
+</Note>

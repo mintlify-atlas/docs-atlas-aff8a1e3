@@ -1,0 +1,162 @@
+---
+title: "Diagnostic commands"
+description: "Inspect store health, projects, and current context"
+---
+
+Three commands help you understand the state of your stdai installation: `stdai doctor` checks the global store, `stdai projects` lists all known projects, and `stdai context` shows the environment stdai has detected for your current directory.
+
+---
+
+## stdai doctor
+
+Run a set of diagnostic checks on the global store. Use this to confirm your installation is healthy or to diagnose why commands are failing.
+
+```bash
+stdai doctor
+```
+
+### What doctor checks
+
+| Check | What it verifies |
+|-------|-----------------|
+| `global store` | The store directory (`~/.stdai/` by default) exists |
+| `object store` | The content-addressed object store subdirectory exists |
+| `database` | The SQLite database file exists |
+| `database schema` | The database tables and indexes are correctly initialized |
+| `git available` | `git` is on your `$PATH` (required for project context detection) |
+| `database` (count) | How many total artifacts are in the store |
+| `current project` | The detected project name and its artifact count |
+
+### Example output
+
+```
+  global store         ok    (/home/user/.stdai)
+  object store         ok
+  database             ok
+  database schema      ok
+  git available        ok
+  database             ok    (47 artifacts)
+  current project      my-api (12 artifacts)
+```
+
+If a check fails, the status shows `FAIL` instead of `ok`. For example, if the store has never been initialized:
+
+```
+  global store         FAIL  (/home/user/.stdai)
+  object store         FAIL
+  database             FAIL
+  database schema      FAIL
+  git available        ok
+```
+
+<Note>
+The global store auto-creates on first use. If you see failures, run any `stdai write` command to initialize the store, then run `stdai doctor` again.
+</Note>
+
+---
+
+## stdai projects
+
+List all projects that have artifacts in the global store, with artifact counts and latest activity timestamps.
+
+```bash
+stdai projects
+stdai projects --json
+```
+
+### Flags
+
+<ParamField path="--json" type="boolean">
+  Output the project list as a JSON array.
+</ParamField>
+
+### Example output (plain)
+
+```
+  my-api                     12 artifacts    2024-01-15T10:30
+  auth-service                8 artifacts    2024-01-14T09:15
+  payments-service            3 artifacts    2024-01-10T14:00
+```
+
+### Example output (`--json`)
+
+```json
+[
+  {
+    "project": "my-api",
+    "artifacts": 12,
+    "latest_activity": "2024-01-15T10:30:00Z"
+  },
+  {
+    "project": "auth-service",
+    "artifacts": 8,
+    "latest_activity": "2024-01-14T09:15:00Z"
+  },
+  {
+    "project": "payments-service",
+    "artifacts": 3,
+    "latest_activity": "2024-01-10T14:00:00Z"
+  }
+]
+```
+
+---
+
+## stdai context
+
+Show what stdai has detected about your current environment: the active project, repo root, global store path, and artifact counts.
+
+```bash
+stdai context
+stdai context --json
+```
+
+### Flags
+
+<ParamField path="--json" type="boolean">
+  Output the context as a JSON object.
+</ParamField>
+
+### Example output (plain)
+
+```
+  project              my-api
+  repo root            /home/user/projects/my-api
+  global store         /home/user/.stdai
+  artifacts            12 (in current project)
+  artifacts            47 (total)
+```
+
+### Example output (`--json`)
+
+```json
+{
+  "project": "my-api",
+  "repo_root": "/home/user/projects/my-api",
+  "global_store": "/home/user/.stdai",
+  "project_artifacts": 12,
+  "total_artifacts": 47
+}
+```
+
+If stdai cannot detect a project (no git repo and no `$STDAI_PROJECT`), `project` is `null` and `project_artifacts` is `0`.
+
+```json
+{
+  "project": null,
+  "repo_root": null,
+  "global_store": "/home/user/.stdai",
+  "project_artifacts": 0,
+  "total_artifacts": 47
+}
+```
+
+### How project context is detected
+
+stdai resolves the current project in this order:
+
+1. `$STDAI_PROJECT` environment variable
+2. Git repo name — the basename of `git rev-parse --show-toplevel`
+3. Current working directory basename
+
+Use `stdai context` to confirm which project stdai is using before running `find` or `list`.

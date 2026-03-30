@@ -1,97 +1,84 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "stdai — The Standard Stream for Agent Work"
+description: "Capture, sign, and search agent work as durable artifacts with provenance lineage. The fourth Unix stream for agentic systems."
 ---
 
-## Setting up
+Unix gave us `stdin`, `stdout`, and `stderr`. stdai adds the fourth stream: **durable work that survives beyond the immediate response.**
 
-Get your documentation site up and running in minutes.
+Every research finding, plan, decision, and handoff your agents produce gets stored as a cryptographically signed, searchable artifact — with full lineage back to what it was based on.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+```bash
+python3 research.py | stdai write --kind research --tag security | python3 fact_checker.py
+```
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install stdai in seconds with a one-liner or from source
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create your first signed artifact in under 2 minutes
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Core Concepts" icon="book" href="/concepts/artifacts">
+    Understand artifacts, identities, lineage, and project context
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Command Reference" icon="terminal" href="/commands/write">
+    Every command, flag, and option documented with examples
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why stdai?
 
-Everything you need to create world-class documentation.
+Agentic systems produce work that doesn't fit neatly into Unix's three streams: research findings, plans, handoffs, fact checks, decisions, investigation notes. This work needs to survive across sessions and agents, be searchable, and have clear provenance.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={2}>
+  <Card title="Signed artifacts" icon="signature">
+    Every write is signed with an Ed25519 identity — tamper detection built in
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="Pipe-transparent" icon="pipe-section">
+    stdin flows to stdout unchanged while stdai captures the work silently
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Full-text search" icon="magnifying-glass">
+    SQLite FTS5 search across all your artifacts by content, kind, or tag
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Provenance DAG" icon="diagram-project">
+    Link artifacts with `--based-on` to build a verifiable chain of reasoning
   </Card>
-</Columns>
+</CardGroup>
 
-## Need inspiration?
+## Get started in 3 steps
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Steps>
+  <Step title="Install stdai">
+    ```bash
+    curl -sSf https://raw.githubusercontent.com/ooboai/stdai/main/install.sh | bash
+    ```
+  </Step>
+  <Step title="Create a signing identity">
+    ```bash
+    stdai identity new --label "my-agent"
+    export STDAI_IDENTITY=stdai:a3b7c9d8e1f2...
+    ```
+  </Step>
+  <Step title="Write your first artifact">
+    ```bash
+    stdai write --kind note --content "guest sessions break when middleware assumes user role"
+    ```
+  </Step>
+</Steps>
+
+## Explore the guides
+
+<CardGroup cols={2}>
+  <Card title="Agent integration" icon="robot" href="/guides/agent-integration">
+    Use stdai as a skill inside Cursor, Claude Code, and other AI agents
+  </Card>
+  <Card title="Pipeline patterns" icon="arrows-split-up-and-left" href="/guides/pipelines">
+    Chain producers and consumers with stdai as a semantic tee
+  </Card>
+  <Card title="Cross-project work" icon="folder-tree" href="/guides/cross-project-work">
+    Reference and search artifacts across project boundaries
+  </Card>
+  <Card title="Signature verification" icon="shield-check" href="/guides/verification">
+    Verify artifact integrity and trace signer identity
+  </Card>
+</CardGroup>

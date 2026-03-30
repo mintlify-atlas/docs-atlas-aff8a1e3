@@ -1,0 +1,197 @@
+---
+title: "stdai identity"
+description: "Manage signing identities"
+---
+
+Every artifact written by stdai is signed with an Ed25519 identity. An identity is a cryptographic key pair with an address derived from the public key: the prefix `stdai:` followed by 40 hex characters.
+
+Identities are stored in `~/.stdai/identities/` (or your configured store location). Local identities include a secret key and can sign artifacts. Imported identities hold only a public key and can be used for verification.
+
+## Subcommands
+
+### identity new
+
+Create a new signing identity. stdai generates an Ed25519 key pair, stores it locally, and prints the address.
+
+```bash
+stdai identity new --label "my-agent"
+```
+
+```
+Created identity:
+
+  address:  stdai:a3b7c9d8e1f2345678901234567890ab12345678
+  label:    my-agent
+  created:  2024-01-15T10:30:00Z
+  store:    /home/user/.stdai/identities
+
+Set it for your session:
+
+  export STDAI_IDENTITY=stdai:a3b7c9d8e1f2345678901234567890ab12345678
+```
+
+**Flags:**
+
+<ParamField path="--label" type="string">
+  Human-readable label for this identity. Optional but recommended for keeping track of multiple identities.
+</ParamField>
+
+---
+
+### identity list
+
+List all identities stored locally.
+
+```bash
+stdai identity list
+stdai identity list --json
+```
+
+**Flags:**
+
+<ParamField path="--json" type="boolean">
+  Output the list as a JSON array.
+</ParamField>
+
+**Example output (plain):**
+
+```
+ADDRESS                                            LABEL                CREATED
+stdai:a3b7c9d8e1f2345678901234567890ab12345678    my-agent             2024-01-15T10:30:00Z
+stdai:b4c8d0e9f2031234567890abcdef1234567890bc    remote-agent         2024-01-10T08:00:00Z
+```
+
+**Example output (`--json`):**
+
+```json
+[
+  {
+    "address": "stdai:a3b7c9d8e1f2345678901234567890ab12345678",
+    "label": "my-agent",
+    "created_at": "2024-01-15T10:30:00Z",
+    "has_secret": true
+  },
+  {
+    "address": "stdai:b4c8d0e9f2031234567890abcdef1234567890bc",
+    "label": "remote-agent",
+    "created_at": "2024-01-10T08:00:00Z",
+    "has_secret": false
+  }
+]
+```
+
+The `has_secret` field indicates whether the local key store includes the Ed25519 secret key. Imported identities have `has_secret: false` and can only be used for verification, not signing.
+
+---
+
+### identity show
+
+Show the full detail for a specific identity.
+
+```bash
+stdai identity show stdai:a3b7c9d8e1f2345678901234567890ab12345678
+```
+
+**Arguments:**
+
+<ParamField path="address" type="string" required>
+  The identity address to show. Prefix matching is supported.
+</ParamField>
+
+**Example output:**
+
+```
+Address   stdai:a3b7c9d8e1f2345678901234567890ab12345678
+Label     my-agent
+Pubkey    9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e...
+Created   2024-01-15T10:30:00Z
+Secret    yes (local)
+```
+
+---
+
+### identity export
+
+Print the public key for an identity as a hex string. Use this to share your public key with others so they can import it for verification.
+
+```bash
+stdai identity export stdai:a3b7c9d8e1f2345678901234567890ab12345678
+```
+
+```
+9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e...
+```
+
+**Arguments:**
+
+<ParamField path="address" type="string" required>
+  The identity address to export. Prefix matching is supported.
+</ParamField>
+
+---
+
+### identity import
+
+Import an external public key for verification purposes. The imported identity has no secret key and cannot sign artifacts, but you can use it to verify artifacts signed by that key with `stdai verify`.
+
+```bash
+stdai identity import --pubkey 9f8e7d6c5b4a3f... --label "remote-agent"
+```
+
+```
+Imported identity:
+
+  address:  stdai:b4c8d0e9f2031234567890abcdef1234567890bc
+  label:    remote-agent
+  type:     verification-only (no secret key)
+```
+
+**Flags:**
+
+<ParamField path="--pubkey" type="string" required>
+  Hex-encoded Ed25519 public key (64 hex characters).
+</ParamField>
+
+<ParamField path="--label" type="string">
+  Optional human-readable label for this imported identity.
+</ParamField>
+
+---
+
+## Address format
+
+An identity address is `stdai:` followed by 40 hex characters derived from the Ed25519 public key — similar in structure to an Ethereum address.
+
+```
+stdai:a3b7c9d8e1f2345678901234567890ab12345678
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+       40 hex characters (160 bits)
+```
+
+## Key storage layout
+
+Identities are stored in your global stdai store:
+
+```
+~/.stdai/identities/
+  <address-hex>/
+    secret.key       Ed25519 secret key bytes (mode 0600)
+    public.key       Ed25519 public key bytes
+    identity.toml    { address, label, created_at }
+```
+
+Imported (verification-only) identities have `public.key` and `identity.toml` but no `secret.key`.
+
+## Setting an identity for your session
+
+After creating an identity, export it as an environment variable so you don't need to pass `--identity` on every write:
+
+```bash
+export STDAI_IDENTITY=stdai:a3b7c9d8e1f2345678901234567890ab12345678
+```
+
+You can also pass it per command:
+
+```bash
+stdai write --kind note --content "hello" --identity stdai:a3b7c9d8e1f2...
+```

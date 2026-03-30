@@ -1,0 +1,214 @@
+---
+title: "Environment variables"
+description: "Configure stdai with environment variables"
+---
+
+stdai reads four environment variables that control where it stores data, which project context it uses, and which signing identity it writes with. All variables are optional — sensible defaults apply when they are unset.
+
+## Store location
+
+stdai resolves the global store path in this order:
+
+1. `$STDAI_HOME` — if set and non-empty, used as-is
+2. `$XDG_DATA_HOME/stdai/` — if `$XDG_DATA_HOME` is set and non-empty
+3. `~/.stdai/` — default fallback
+
+<Note>
+The store is created automatically on first use. You do not need to run any
+initialization command.
+</Note>
+
+### `$STDAI_HOME`
+
+Overrides the global store location entirely. When set, stdai ignores
+`$XDG_DATA_HOME` and uses the path you provide directly.
+
+| | |
+|---|---|
+| **Type** | Directory path |
+| **Example** | `/data/stdai-ci` |
+| **Overrides** | `$XDG_DATA_HOME`, `~/.stdai/` |
+
+**When to use it:**
+
+- CI environments where you want artifacts isolated from your personal store
+- Testing a new version of stdai against a scratch store
+- Running multiple independent agent sessions with separate stores
+- Mounting an external or shared volume as the store
+
+```bash
+# Isolated store for a CI job
+export STDAI_HOME=/tmp/stdai-ci-$CI_JOB_ID
+stdai write --kind research --content "CI finding"
+
+# Verify artifacts went to the right place
+stdai context
+```
+
+### `$XDG_DATA_HOME`
+
+Standard [XDG Base Directory](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html)
+variable. When set, stdai places its store at `$XDG_DATA_HOME/stdai/`.
+
+| | |
+|---|---|
+| **Type** | Directory path |
+| **Example** | `/home/alice/.local/share` → store at `/home/alice/.local/share/stdai/` |
+| **Overrides** | `~/.stdai/` |
+| **Overridden by** | `$STDAI_HOME` |
+
+**When to use it:**
+
+- You already use XDG conventions for other tools and want stdai to follow suit
+- System-wide configuration that moves all XDG data to a non-default location
+
+```bash
+# XDG-compliant setup — store lands at ~/.local/share/stdai/
+export XDG_DATA_HOME="$HOME/.local/share"
+stdai write --kind note --content "using XDG layout"
+```
+
+<Tip>
+If you set both `$STDAI_HOME` and `$XDG_DATA_HOME`, `$STDAI_HOME` wins.
+</Tip>
+
+---
+
+## Project context
+
+Every artifact is tagged with a project name, detected in this order:
+
+1. `$STDAI_PROJECT` — if set and non-empty
+2. Git repo basename — result of `git rev-parse --show-toplevel`, basename only
+3. Current working directory basename
+
+### `$STDAI_PROJECT`
+
+Overrides automatic project detection. Useful when the detected name is wrong,
+when you are not inside a git repo, or when multiple agents should share a
+single project context regardless of where they run.
+
+| | |
+|---|---|
+| **Type** | String |
+| **Example** | `payments-service` |
+| **Overrides** | git repo basename, cwd basename |
+
+**When to use it:**
+
+- Running agents from a temporary working directory that doesn't reflect the real project
+- CI pipelines where `git rev-parse` is unavailable or returns an unexpected path
+- Coordinating work across multiple agents that each run in different directories but belong to the same project
+
+```bash
+# Force all artifacts to be tagged with "payments-service"
+export STDAI_PROJECT=payments-service
+stdai write --kind investigation --content "found N+1 query in checkout"
+
+# Confirm the detected context
+stdai context
+```
+
+```bash
+# In a CI pipeline with a shallow clone or detached HEAD
+export STDAI_PROJECT=my-api
+stdai write --kind fact_check --content "all endpoints return 200"
+```
+
+<Note>
+`stdai find` and `stdai list` default to the current project scope. If you
+override `$STDAI_PROJECT`, search results will filter to that name.
+Use `--all` to search across every project regardless of context.
+</Note>
+
+---
+
+## Signing identity
+
+Every `stdai write` must be signed with an Ed25519 identity. The identity is
+resolved in this order:
+
+1. `--identity <address>` flag on the command (highest priority)
+2. `$STDAI_IDENTITY` environment variable
+3. If neither is provided, the command fails with instructions
+
+### `$STDAI_IDENTITY`
+
+Sets the default signing identity for the session. The value must be a full
+identity address in `stdai:<40-hex-chars>` format.
+
+| | |
+|---|---|
+| **Type** | Identity address string |
+| **Example** | `stdai:a3b7c9d8e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6` |
+| **Overridden by** | `--identity` flag per command |
+
+**When to use it:**
+
+- Setting an identity once for an entire agent session instead of passing `--identity` on every write
+- CI environments where the identity is provisioned as a secret
+- Multi-step pipelines where every stage should share the same signer
+
+```bash
+# One-time setup: create an identity
+stdai identity new --label "security-auditor"
+# → Created identity:
+# →   address: stdai:a3b7c9d8e1f2...
+
+# Export the address and set it for the session
+export STDAI_IDENTITY=stdai:a3b7c9d8e1f2...
+
+# All subsequent writes are signed automatically
+stdai write --kind research --content "OAuth token refresh lacks PKCE"
+stdai write --kind decision --content "Implement PKCE in v1"
+```
+
+```bash
+# Override per-command when you need a different signer
+stdai write --kind handoff \
+  --content "passing to review agent" \
+  --identity stdai:ffee1234...
+```
+
+<Warning>
+If neither `$STDAI_IDENTITY` nor `--identity` is provided, `stdai write`
+will fail. Run `stdai identity new --label "my-agent"` to create an identity,
+then export the printed address.
+</Warning>
+
+---
+
+## Combining variables
+
+The variables are independent and compose freely. A typical CI setup looks like:
+
+```bash
+# ci.sh — isolated store, fixed project, provisioned identity
+export STDAI_HOME=/data/stdai-ci
+export STDAI_PROJECT=my-api
+export STDAI_IDENTITY=stdai:a3b7c9d8e1f2...
+
+# All writes go to /data/stdai-ci, tagged "my-api", signed with the CI identity
+python3 run_checks.py | stdai write --kind fact_check
+```
+
+A multi-agent local session:
+
+```bash
+# agent-a.sh
+export STDAI_IDENTITY=stdai:aaaa1111...
+export STDAI_PROJECT=auth-service
+stdai write --kind research --content "session tokens need rotation"
+
+# agent-b.sh — different identity, same project
+export STDAI_IDENTITY=stdai:bbbb2222...
+export STDAI_PROJECT=auth-service
+stdai write --kind fact_check --content "confirmed: no rotation on refresh"
+```
+
+Use `stdai context` at any time to confirm which store, project, and defaults
+are currently in effect:
+
+```bash
+stdai context
+```

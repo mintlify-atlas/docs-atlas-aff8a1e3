@@ -1,0 +1,145 @@
+---
+title: "Lineage commands"
+description: "Traverse artifact provenance with upstream and downstream"
+---
+
+stdai tracks provenance through lineage edges created by `--based-on` when writing artifacts. Two commands let you traverse these edges: `stdai upstream` (what an artifact is based on) and `stdai downstream` (what was built from an artifact).
+
+Both commands operate globally — lineage traversal crosses project boundaries.
+
+## stdai upstream
+
+Show the ancestors of an artifact: the artifacts it was directly or transitively based on.
+
+### Arguments
+
+<ParamField path="id" type="string" required>
+  The artifact ID to inspect. Prefix matching is supported.
+</ParamField>
+
+### Flags
+
+<ParamField path="--recursive" type="boolean">
+  Walk the full ancestor graph rather than just the direct parents. Returns all transitive upstream artifacts.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output results as a JSON array.
+</ParamField>
+
+### Examples
+
+```bash
+# Direct parents only
+stdai upstream 01HXYZ...
+
+# Full ancestor graph
+stdai upstream 01HXYZ... --recursive
+
+# JSON output
+stdai upstream 01HXYZ... --json
+```
+
+---
+
+## stdai downstream
+
+Show the descendants of an artifact: artifacts that declared this one as a parent via `--based-on`.
+
+### Arguments
+
+<ParamField path="id" type="string" required>
+  The artifact ID to inspect. Prefix matching is supported.
+</ParamField>
+
+### Flags
+
+<ParamField path="--recursive" type="boolean">
+  Walk the full descendant graph rather than just the direct children. Returns all transitive downstream artifacts.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output results as a JSON array.
+</ParamField>
+
+### Examples
+
+```bash
+# Direct children only
+stdai downstream 01HXYZ...
+
+# Full descendant graph
+stdai downstream 01HXYZ... --recursive
+
+# JSON output
+stdai downstream 01HXYZ... --json
+```
+
+---
+
+## Worked example: research → fact check → decision
+
+Here is a three-step chain that creates a lineage graph you can traverse in either direction.
+
+<Steps>
+  <Step title="Write the research artifact">
+    ```bash
+    id1=$(stdai write --kind research \
+      --content "OAuth token refresh lacks PKCE on all endpoints" \
+      --tag security)
+    echo "Research: $id1"
+    ```
+  </Step>
+  <Step title="Fact-check based on the research">
+    ```bash
+    id2=$(stdai write --kind fact_check \
+      --content "Confirmed: PKCE missing from /auth/token and /auth/refresh" \
+      --based-on "$id1")
+    echo "Fact check: $id2"
+    ```
+  </Step>
+  <Step title="Write a decision based on the fact check">
+    ```bash
+    id3=$(stdai write --kind decision \
+      --content "Proceed with PKCE implementation in v1. Patch both endpoints." \
+      --based-on "$id2")
+    echo "Decision: $id3"
+    ```
+  </Step>
+</Steps>
+
+You now have a three-node chain: `$id1` → `$id2` → `$id3`.
+
+### Traverse upstream from the decision
+
+```bash
+# Direct parent (the fact check)
+stdai upstream "$id3"
+
+# Full ancestor graph (fact check + research)
+stdai upstream "$id3" --recursive
+```
+
+```
+01HABC...  fact_check   Confirmed: PKCE missing from /auth/token and...
+01HDEF...  research     OAuth token refresh lacks PKCE on all endpoint...
+```
+
+### Traverse downstream from the research
+
+```bash
+# Direct children (the fact check)
+stdai downstream "$id1"
+
+# Full descendant graph (fact check + decision)
+stdai downstream "$id1" --recursive
+```
+
+```
+01HABC...  fact_check   Confirmed: PKCE missing from /auth/token and...
+01HXYZ...  decision     Proceed with PKCE implementation in v1. Patch...
+```
+
+<Note>
+Lineage edges are stored globally and cross project boundaries. An artifact in `auth-service` can be the parent of an artifact in `api-gateway` — `stdai upstream` and `stdai downstream` will find it regardless of your current directory.
+</Note>

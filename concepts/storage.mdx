@@ -1,0 +1,85 @@
+---
+title: "Storage"
+description: "The global artifact store: layout, location, and internals"
+---
+
+stdai keeps all artifacts in a single global store. The store is created automatically the first time you run any command — no `init` step required.
+
+## Default location
+
+The store lives at `~/.stdai/` by default. You can override this with environment variables (see [below](#environment-variables)).
+
+## Store layout
+
+```
+~/.stdai/
+  objects/                Content-addressed blob store (SHA-256)
+    ab/
+      cdef1234...          Raw artifact content (named by hash remainder)
+  stdai.db                SQLite database (metadata, lineage, FTS index)
+  config.toml             Configuration
+  identities/
+    <address-hex>/
+      secret.key          Ed25519 secret key (hex, mode 0600)
+      public.key          Ed25519 public key (hex)
+      identity.toml       address, label, created_at
+```
+
+## Object store
+
+Content blobs are stored in `objects/` using a two-level directory layout derived from the SHA-256 hash of the content. The first two hex characters become the directory name; the remaining characters become the filename:
+
+- Hash: `abcdef1234...`
+- Path: `objects/ab/cdef1234...`
+
+This is identical to git's loose object layout.
+
+**Deduplication is automatic.** If two artifacts have identical content, they share the same object file. Writing the same content a second time is a no-op in the object store — the hash is computed, the path is derived, and the write is skipped if the file already exists.
+
+## SQLite database
+
+`stdai.db` is a SQLite database that holds all artifact metadata, tags, lineage links, and the full-text search index.
+
+Key tables:
+
+| Table | Contents |
+|---|---|
+| `artifacts` | One row per artifact, all metadata fields |
+| `artifact_tags` | Many-to-many: artifact IDs to tag strings |
+| `artifact_links` | Lineage edges: `child_id`, `parent_id`, `relation_type` |
+| `artifact_fts` | SQLite FTS5 virtual table indexing `kind`, `name`, `preview`, `content` |
+
+The FTS5 index powers `stdai find`. Queries are automatically expanded to prefix-match terms, so `stdai find auth` matches `authentication`, `authorize`, etc.
+
+The database is opened with `PRAGMA journal_mode=WAL` for safe concurrent access and `PRAGMA foreign_keys=ON` to enforce referential integrity on link tables.
+
+## Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `$STDAI_HOME` | Override the global store location entirely |
+| `$XDG_DATA_HOME` | XDG base directory; stdai uses `$XDG_DATA_HOME/stdai/` |
+| `$STDAI_PROJECT` | Override project context detection |
+| `$STDAI_IDENTITY` | Default signing identity address for the session |
+
+### Store location resolution order
+
+stdai resolves the store path in this order:
+
+1. `$STDAI_HOME` — if set and non-empty, use this path directly
+2. `$XDG_DATA_HOME/stdai/` — if `$XDG_DATA_HOME` is set and non-empty
+3. `~/.stdai/` — default fallback
+
+<Tip>
+  In containerised or CI environments, set `$STDAI_HOME` to a known path so artifact storage is predictable and easy to mount or cache.
+</Tip>
+
+## Schema migrations
+
+stdai upgrades the database schema in place when it opens an older database. Migrations are additive (new columns, new indexes) and run automatically — no manual migration step is needed.
+
+When stdai detects a legacy per-project `.stdai/` directory (from v0.x), it migrates artifacts into the global store on first use. The original directory is renamed to `.stdai.migrated/` rather than deleted, so you can verify the migration before removing it.
+
+<Warning>
+  Do not manually edit `stdai.db` or files in `objects/`. The object store and FTS index must stay in sync with the database rows. Use `stdai doctor` to check store health.
+</Warning>

@@ -1,0 +1,176 @@
+---
+title: "Pipeline patterns"
+description: "Use stdai as a semantic tee in shell pipelines"
+---
+
+stdai acts as a **semantic tee** in shell pipelines. Like `tee`, it intercepts
+content flowing through a pipe — but instead of copying bytes to a file, it
+stores a signed, searchable artifact with full metadata and lineage. The
+original content flows to stdout unchanged, so downstream commands receive
+exactly what they would have without stdai in the chain.
+
+## How pipe mode works
+
+When stdai reads from stdin (no `--content` flag), it operates in pipe mode:
+
+- **stdin** → stored as an artifact in `~/.stdai/`
+- **stdout** → original bytes forwarded byte-for-byte
+- **stderr** → artifact ID emitted after storage
+
+This means you can drop stdai anywhere in a pipeline without breaking it.
+
+```bash
+python3 producer.py | stdai write --kind research | python3 consumer.py
+```
+
+`consumer.py` receives the same bytes that `producer.py` wrote. The artifact is
+stored and signed in the background.
+
+## Capturing the artifact ID from stderr
+
+Because the artifact ID goes to stderr, you can capture it separately while
+still letting stdout flow normally:
+
+```bash
+# Capture the artifact ID while forwarding stdout to the next command
+id=$(python3 producer.py | stdai write --kind research 2>&1 1>/dev/null)
+
+# Or redirect stderr to a file and capture stdout separately
+python3 producer.py | stdai write --kind research 2>artifact_id.txt | python3 consumer.py
+```
+
+<Note>
+In standard pipe mode (forwarding active), stdout carries the original bytes — `--json` has no additional effect. To get JSON artifact output from a pipe, combine with `--no-forward`: the artifact is captured and printed as JSON, and nothing is forwarded to stdout.
+</Note>
+
+## `--no-forward`: capture without forwarding
+
+Use `--no-forward` when you want to capture content from stdin but not pass it
+downstream:
+
+```bash
+# Store the output of a script without forwarding it
+python3 inspect_repo.py | stdai write --kind investigation --tag payments --no-forward
+```
+
+The artifact is stored and the ID is emitted to stderr. Nothing goes to stdout.
+
+## `--content`: direct mode (no pipe)
+
+When you pass `--content`, stdai does not read from stdin and does not forward
+anything. This is direct mode — use it for writing artifacts programmatically
+or in scripts where you already have the content as a string:
+
+```bash
+stdai write --kind note \
+  --content "guest sessions break when middleware assumes user role" \
+  --json
+```
+
+In direct mode, `--json` works as expected: the full artifact is printed to
+stdout as JSON.
+
+## Pipeline patterns
+
+### Basic passthrough
+
+```bash
+python3 producer.py | stdai write --kind research | python3 consumer.py
+```
+
+### Chaining multiple stdai writes
+
+You can place stdai at multiple points in a pipeline to capture intermediate
+results:
+
+```bash
+python3 fetch_data.py \
+  | stdai write --kind research --tag raw \
+  | python3 process_data.py \
+  | stdai write --kind summary --tag processed \
+  | python3 report.py
+```
+
+Each stage produces its own artifact. Link them with `--based-on` if you want
+to record the lineage explicitly.
+
+### Capture-only (no forwarding)
+
+```bash
+python3 inspect_repo.py | stdai write --kind investigation --no-forward
+```
+
+### Capturing the artifact ID for later use
+
+```bash
+# Capture the ID emitted to stderr; let stdout flow to the next command
+id=$(python3 analyze.py | stdai write --kind research 2>&1 1>/dev/null)
+echo "Stored artifact: $id"
+```
+
+## Multi-stage research pipeline walkthrough
+
+This example shows the research pipeline from the README — three stages that
+produce linked artifacts from raw research through fact-checking to a final
+decision.
+
+<Steps>
+  <Step title="Set up identity">
+    ```bash
+    stdai identity new --label "security-auditor"
+    export STDAI_IDENTITY=stdai:...
+    ```
+  </Step>
+
+  <Step title="Write the research artifact">
+    Use direct mode to store the initial finding and capture the ID:
+
+    ```bash
+    id1=$(stdai write --kind research \
+      --content "OAuth flow has vulnerability in token refresh" \
+      --tag security)
+    ```
+  </Step>
+
+  <Step title="Write a fact check linked to the research">
+    Link to the research artifact with `--based-on`:
+
+    ```bash
+    id2=$(stdai write --kind fact_check \
+      --content "Confirmed: token refresh lacks PKCE" \
+      --based-on "$id1")
+    ```
+  </Step>
+
+  <Step title="Write a decision linked to the fact check">
+    ```bash
+    stdai write --kind decision \
+      --content "Proceed with PKCE implementation in v1" \
+      --based-on "$id2"
+    ```
+  </Step>
+
+  <Step title="Verify signatures and walk lineage">
+    ```bash
+    stdai verify "$id1"
+    stdai verify "$id2"
+
+    stdai upstream "$id2" --recursive
+    stdai downstream "$id1" --recursive
+    ```
+  </Step>
+</Steps>
+
+## Agent handoff via pipeline
+
+Capture the output of an inspection script as a handoff artifact so the next
+session can pick up where this one left off:
+
+```bash
+# Session 1: capture investigation output
+python3 inspect_repo.py | stdai write --kind investigation --tag payments
+
+# Session 2: find and read the handoff
+stdai find payments
+stdai show <artifact_id>
+```

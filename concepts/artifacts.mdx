@@ -1,0 +1,123 @@
+---
+title: "Artifacts"
+description: "The fundamental unit of stored agent work"
+---
+
+An artifact is the basic unit that stdai stores. Every `stdai write` call produces one: an immutable, signed, content-addressed record that captures both the content and the context in which it was created.
+
+## What makes an artifact
+
+**Immutable.** Once written, an artifact's content never changes. The content hash is computed at write time, and any modification would break signature verification.
+
+**Signed.** Every artifact carries an Ed25519 signature from the identity that created it. Verification can detect tampering at any point after creation.
+
+**Content-addressed.** Identical content produces the same SHA-256 hash. stdai deduplicates blobs in the object store automatically — writing the same content twice stores one blob.
+
+**Context-rich.** Artifacts capture the working directory, git repo, branch, commit, hostname, and timestamp automatically, without any flags required.
+
+## Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | ULID — timestamp-sortable, globally unique, prefix-matchable |
+| `content_hash` | string | SHA-256 hex of the raw content |
+| `object_path` | string | Path to the content blob in the object store |
+| `kind` | string? | Artifact kind: `research`, `note`, `fact_check`, etc. |
+| `name` | string? | Optional human-readable label |
+| `content_format` | string | `text`, `json`, or `md` — auto-detected if not provided |
+| `created_at` | string | ISO 8601 UTC timestamp |
+| `size_bytes` | integer | Content size in bytes |
+| `project` | string? | Project context detected at write time |
+| `tags` | string[] | Zero or more tags set with `--tag` |
+| `based_on` | string[] | IDs of parent artifacts (`--based-on`) |
+| `signer_address` | string? | `stdai:`-prefixed address of the signing identity |
+| `signature` | string? | Hex-encoded Ed25519 signature |
+| `signer_pubkey` | string? | Hex-encoded Ed25519 public key |
+| `preview` | string? | First 200 characters of content, newlines collapsed to spaces |
+| `source_mode` | string | `direct` (from `--content`) or `pipe` (from stdin) |
+| `agent_id` | string? | Agent identifier (`--agent`) |
+| `task_id` | string? | Task identifier (`--task`) |
+| `session_id` | string? | ULID assigned at write time per invocation |
+| `cwd` | string? | Working directory at write time |
+| `repo_name` | string? | Git repository name |
+| `git_branch` | string? | Git branch at write time |
+| `git_commit` | string? | Full git commit hash at write time |
+| `hostname` | string? | Machine hostname |
+
+## Artifact kinds
+
+The `--kind` flag is a free-form string. stdai does not enforce a fixed list, but the following kinds are conventional and well-understood by tools:
+
+| Kind | Meaning |
+|---|---|
+| `research` | Raw findings or investigation output |
+| `note` | An observation, reminder, or working note |
+| `fact_check` | Verification of a prior claim or artifact |
+| `summary` | Condensed form of one or more artifacts |
+| `handoff` | Context for the next agent or session |
+| `plan` | A proposed sequence of steps |
+| `decision` | A concluded choice and its rationale |
+
+You can use any string for `--kind`. Custom kinds are searchable and filterable with `stdai find --kind <value>`.
+
+## Content formats
+
+stdai detects the format automatically when you don't pass `--format`:
+
+- **`json`** — content parses as valid JSON (object or array)
+- **`md`** — content contains Markdown indicators (`# `, ` ``` `, `**`)
+- **`text`** — everything else
+
+You can override detection with `--format text`, `--format json`, or `--format md`.
+
+## Source mode
+
+An artifact's `source_mode` is either `direct` or `pipe`:
+
+- **`direct`** — content came from the `--content` flag
+- **`pipe`** — content was read from stdin
+
+In pipe mode, stdai forwards stdin to stdout byte-for-byte so pipelines keep working. The artifact ID is written to stderr. Use `--no-forward` to capture without forwarding.
+
+## Preview generation
+
+`preview` is generated from the first 200 Unicode characters of the content, with newlines and carriage returns replaced by spaces. If the content is longer than 200 characters, the preview ends with `...`. The preview is stored in the SQLite FTS index and used in list and search output.
+
+## ULID identifiers
+
+Every artifact has a [ULID](https://github.com/ulid/spec) as its `id`:
+
+- **Timestamp-sortable**: the first 10 characters encode the creation time in milliseconds, so `ORDER BY id` gives chronological order
+- **Globally unique**: the remaining 16 characters are random
+- **Prefix-matchable**: `stdai show 01HX` resolves to the artifact whose ID starts with `01HX`, as long as the prefix is unambiguous
+
+## Example artifact (JSON)
+
+```json
+{
+  "id": "01HXYZ4KGJN8V2P5QR7T3WABCD",
+  "content_hash": "a3f5c8d2e1b4099f3d7c2a6e5b8f1d4a9e2c7b5f3a8d1e6c9b2f4a7d0e3c5b8",
+  "object_path": "/home/user/.stdai/objects/a3/f5c8d2e1b4099f3d7c2a6e5b8f1d4a9e2c7b5f3a8d1e6c9b2f4a7d0e3c5b8",
+  "kind": "research",
+  "name": "OAuth token refresh analysis",
+  "content_format": "md",
+  "created_at": "2026-03-30T14:22:05Z",
+  "size_bytes": 1842,
+  "project": "auth-service",
+  "tags": ["security", "oauth"],
+  "based_on": [],
+  "signer_address": "stdai:a3b7c9d8e1f2a5b8c3d6e9f0a2b5c8d1e4f7a0b3",
+  "signature": "9f3a2c1d8e5b4f7a0e3c6d9b2f5a8c1e4d7b0f3a6c9e2d5b8f1a4c7e0d3b6f9...",
+  "source_mode": "direct",
+  "preview": "OAuth flow has a vulnerability in the token refresh path. The refresh endpoint...",
+  "repo_name": "auth-service",
+  "git_branch": "main",
+  "git_commit": "c3f8a1d2e5b4f7a0e3c6d9b2f5a8c1e4d7b0f3a6",
+  "hostname": "dev-machine",
+  "cwd": "/home/user/projects/auth-service"
+}
+```
+
+<Note>
+  The `object_path` field is included in JSON output. It contains the path to the content blob inside the `objects/` directory of the global store. You can read the blob directly from that path, though using `stdai show --content-only` is the recommended approach.
+</Note>

@@ -1,0 +1,118 @@
+---
+title: "Lineage"
+description: "Provenance DAG linking artifacts to their upstream sources"
+---
+
+Lineage lets you trace where an artifact's content and conclusions came from, and what was built on top of it. Every `--based-on` link creates a directed edge in a provenance graph that stdai can traverse in both directions.
+
+## How links are created
+
+Pass `--based-on <id>` when writing an artifact to declare that the new artifact is derived from an existing one:
+
+```bash
+stdai write --kind fact_check \
+  --content "Confirmed: token refresh lacks PKCE" \
+  --based-on 01HXYZ4KGJN8V2P5QR7T3WABCD
+```
+
+The flag is repeatable. You can link a single artifact to multiple parents:
+
+```bash
+stdai write --kind decision \
+  --content "Proceed with PKCE implementation in v1" \
+  --based-on 01HFACT000... \
+  --based-on 01HFACT001...
+```
+
+Parent IDs are stored in the `based_on` field of the artifact and in the `artifact_links` table in SQLite with relation type `based_on`.
+
+## The provenance DAG
+
+Links form a directed acyclic graph (DAG). Each artifact can have zero or more parents and zero or more children. Because IDs are globally unique across all projects, links naturally cross project boundaries — an artifact in `api-gateway` can depend on an artifact from `auth-service` with no extra configuration.
+
+<Note>
+  Lineage links are not validated at write time. You can reference an ID that does not exist locally, for example when linking to an artifact written on a different machine. `stdai upstream` will report artifacts that are referenced but not present in the store.
+</Note>
+
+## Traversing lineage
+
+### Upstream: ancestors
+
+`stdai upstream` shows what an artifact is based on:
+
+```bash
+# Direct parents only
+stdai upstream 01HDECISION000...
+
+# Full ancestor graph
+stdai upstream 01HDECISION000... --recursive
+
+# JSON output
+stdai upstream 01HDECISION000... --json
+```
+
+### Downstream: descendants
+
+`stdai downstream` shows what was built from an artifact:
+
+```bash
+# Direct children only
+stdai downstream 01HRESEARCH000...
+
+# Full descendant graph
+stdai downstream 01HRESEARCH000... --recursive
+```
+
+Both commands operate globally — they are not scoped to the current project.
+
+## Concrete example
+
+This pipeline produces three linked artifacts: a research finding, a fact check that verifies it, and a decision derived from the fact check.
+
+```bash
+# Step 1: record research findings
+id1=$(stdai write --kind research \
+  --content "OAuth flow has vulnerability in token refresh" \
+  --tag security)
+
+# Step 2: fact-check the finding (links to research)
+id2=$(stdai write --kind fact_check \
+  --content "Confirmed: token refresh lacks PKCE" \
+  --based-on "$id1")
+
+# Step 3: make a decision (links to fact check)
+id3=$(stdai write --kind decision \
+  --content "Proceed with PKCE implementation in v1" \
+  --based-on "$id2")
+
+# Walk upstream from the decision
+stdai upstream "$id3" --recursive
+
+# Walk downstream from the research
+stdai downstream "$id1" --recursive
+```
+
+The resulting DAG looks like this:
+
+```
+01HRESEARCH... (research)
+    └── 01HFACTCHK... (fact_check)
+            └── 01HDECISION... (decision)
+```
+
+## Common lineage patterns
+
+<CardGroup cols={2}>
+  <Card title="Fact check chain" icon="magnifying-glass">
+    Research → fact_check → decision. Each step links to the one before, creating a verifiable chain of reasoning.
+  </Card>
+  <Card title="Multi-source summary" icon="layer-group">
+    Multiple research or note artifacts all pointed to by a single summary. The summary's `based_on` list names each source.
+  </Card>
+  <Card title="Cross-project reference" icon="arrow-up-right-from-square">
+    A plan in one project links to research written in another. `stdai upstream` resolves across project boundaries automatically.
+  </Card>
+  <Card title="Session handoff" icon="arrow-right-arrow-left">
+    A handoff artifact links to all the investigation notes from the current session so the next agent can pick up context by running `stdai upstream`.
+  </Card>
+</CardGroup>

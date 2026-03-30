@@ -1,0 +1,140 @@
+---
+title: "stdai find"
+description: "Full-text search across artifacts"
+---
+
+`stdai find` searches your artifacts using full-text search, metadata filters, or both. You must provide at least one of: a search query, `--kind`, `--tag`, or `--task`.
+
+By default, results are scoped to the current project. Use `--all` to search globally or `--project` to query a specific project.
+
+## Arguments
+
+<ParamField path="query" type="string">
+  Full-text search query. Positional, optional. Searched against artifact content and metadata using SQLite FTS5. Omit to filter by metadata only — but you must then provide at least one of `--kind`, `--tag`, or `--task`.
+</ParamField>
+
+## Flags
+
+<ParamField path="--kind" type="string">
+  Filter results to artifacts of this kind (e.g. `research`, `note`, `decision`).
+</ParamField>
+
+<ParamField path="--tag" type="string">
+  Filter results to artifacts with this tag.
+</ParamField>
+
+<ParamField path="--task" type="string">
+  Filter results to artifacts with this task ID.
+</ParamField>
+
+<ParamField path="--limit" type="integer" default="20">
+  Maximum number of results to return.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output results as a JSON array.
+</ParamField>
+
+<ParamField path="--all" type="boolean">
+  Search across all projects instead of just the current one. Overrides the auto-detected project scope.
+</ParamField>
+
+<ParamField path="--project" type="string">
+  Filter to a specific project by name. Overrides both auto-detection and `--all`.
+</ParamField>
+
+## Full-text search behavior
+
+When you provide a query, stdai runs it through SQLite FTS5 against artifact content and metadata. Results are ranked by relevance. FTS5 supports:
+
+- Phrase queries: `"token refresh"`
+- Prefix queries: `token*`
+- Boolean operators: `token AND refresh`
+- Column filters (internal): results match any indexed field
+
+When you omit the query and use only filters, results are ordered by creation time (most recent first) up to `--limit`.
+
+<Note>
+You must provide at least a query or one filter flag. Running `stdai find` with no arguments returns an error.
+</Note>
+
+## Project scoping
+
+`find` defaults to showing artifacts from the detected current project:
+
+1. `$STDAI_PROJECT` environment variable
+2. Git repo name (basename of `git rev-parse --show-toplevel`)
+3. Current working directory basename
+
+Use `--all` to remove the project filter, or `--project <name>` to query a project other than the current one.
+
+## Examples
+
+### Search by text query
+
+```bash
+stdai find "guest session"
+```
+
+### Search across all projects
+
+```bash
+stdai find "guest session" --all
+```
+
+### Search a specific project
+
+```bash
+stdai find "guest session" --project my-api
+```
+
+### Filter by kind
+
+```bash
+stdai find --kind research
+```
+
+### Filter by tag
+
+```bash
+stdai find --tag security
+```
+
+### Filter by task
+
+```bash
+stdai find --task auth-bug
+```
+
+### Combine query and filters
+
+```bash
+stdai find auth --kind research --tag security
+```
+
+### Increase result limit
+
+```bash
+stdai find auth --limit 50
+```
+
+### JSON output
+
+```bash
+stdai find "token refresh" --kind research --json
+```
+
+```json
+[
+  {
+    "id": "01HXYZ1234ABCDEF567890ABCD",
+    "kind": "research",
+    "name": null,
+    "preview": "OAuth token refresh lacks PKCE on all endpoints...",
+    "created_at": "2024-01-15T10:30:00Z",
+    "project": "my-api",
+    "tags": ["security"],
+    "based_on": []
+  }
+]
+```

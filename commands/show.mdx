@@ -1,0 +1,115 @@
+---
+title: "stdai show"
+description: "Display full artifact detail"
+---
+
+`stdai show` retrieves and displays a single artifact by its ID. You can view the full human-readable detail, output raw content only, or get the complete artifact as JSON.
+
+## Arguments
+
+<ParamField path="id" type="string" required>
+  The artifact ID to display. Prefix matching is supported — you can pass the first few characters of the ID as long as the prefix is unique in the store.
+</ParamField>
+
+## Flags
+
+<ParamField path="--json" type="boolean">
+  Output the full artifact as a JSON object, including all metadata and signature fields.
+</ParamField>
+
+<ParamField path="--content-only" type="boolean">
+  Print only the raw artifact content, with no metadata or formatting. Useful for piping the content to another command.
+</ParamField>
+
+## Prefix matching
+
+You don't need the full artifact ID. Pass a unique prefix and stdai resolves it:
+
+```bash
+# Full ID
+stdai show 01HXYZ1234ABCDEF567890ABCD
+
+# Prefix — works if unique
+stdai show 01HXYZ
+```
+
+If the prefix matches more than one artifact, stdai returns an error.
+
+## Example output
+
+### Human-readable format
+
+```bash
+stdai show 01HXYZ1234ABCDEF567890ABCD
+```
+
+```
+Artifact  01HXYZ1234ABCDEF567890ABCD
+Hash      abcdef1234...
+Kind      research
+Name      OAuth analysis
+Format    text
+Created   2024-01-15T10:30:00Z
+Size      312 bytes
+Project   my-api
+Tags      security, auth
+Agent     cursor
+Task      auth-bug
+CWD       /home/user/projects/my-api
+Repo      my-api (main @ d3adb33f)
+Host      devbox
+Signer    stdai:a3b7c9d8e1f2345678901234567890ab12345678
+Signed    yes
+Source    direct
+
+--- Content ---
+OAuth token refresh lacks PKCE on all endpoints. The vulnerability
+allows an attacker to intercept the authorization code...
+```
+
+### JSON format
+
+```bash
+stdai show 01HXYZ1234ABCDEF567890ABCD --json
+```
+
+```json
+{
+  "id": "01HXYZ1234ABCDEF567890ABCD",
+  "content_hash": "abcdef1234...",
+  "kind": "research",
+  "name": "OAuth analysis",
+  "content_format": "text",
+  "created_at": "2024-01-15T10:30:00Z",
+  "size_bytes": 312,
+  "session_id": "abc123",
+  "agent_id": "cursor",
+  "task_id": "auth-bug",
+  "cwd": "/home/user/projects/my-api",
+  "repo_root": "/home/user/projects/my-api",
+  "repo_name": "my-api",
+  "git_branch": "main",
+  "git_commit": "d3adb33f",
+  "hostname": "devbox",
+  "source_mode": "direct",
+  "preview": "OAuth token refresh lacks PKCE on all endpoints...",
+  "project": "my-api",
+  "signature": "a1b2c3d4...",
+  "signer_address": "stdai:a3b7c9d8e1f2345678901234567890ab12345678",
+  "signer_pubkey": "9f8e7d6c...",
+  "tags": ["security", "auth"],
+  "based_on": []
+}
+```
+
+### Raw content only
+
+```bash
+stdai show 01HXYZ1234ABCDEF567890ABCD --content-only
+```
+
+Prints the content bytes to stdout with no surrounding formatting. Suitable for piping:
+
+```bash
+stdai show 01HXYZ1234ABCDEF567890ABCD --content-only | wc -w
+```

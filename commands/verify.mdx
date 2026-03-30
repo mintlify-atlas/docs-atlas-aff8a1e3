@@ -1,0 +1,131 @@
+---
+title: "stdai verify"
+description: "Cryptographically verify an artifact's signature"
+---
+
+`stdai verify` checks whether an artifact's Ed25519 signature is valid. Every artifact written by stdai is signed at creation time using the identity's secret key. Verification confirms that the artifact's content and metadata have not been tampered with since it was written.
+
+## Arguments
+
+<ParamField path="id" type="string" required>
+  The artifact ID to verify. Prefix matching is supported.
+</ParamField>
+
+## Flags
+
+<ParamField path="--json" type="boolean">
+  Output the verification result as a JSON object.
+</ParamField>
+
+## What verification checks
+
+stdai builds a signing payload from four fields at write time:
+
+- `content_hash` — SHA-256 of the artifact's content
+- `kind` — the artifact kind
+- `created_at` — the creation timestamp
+- `agent_id` — the agent identifier
+
+The signature is computed over this payload using the identity's Ed25519 secret key. Verification recomputes the same payload and checks the signature against the public key stored in the artifact. If any of these four fields were modified after writing, verification fails.
+
+<Note>
+Artifacts written before v1.2 (legacy unsigned artifacts) have no signature. `stdai verify` reports them as `unsigned/legacy` and exits with code 0 — they are accessible but cannot be verified.
+</Note>
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Artifact is verified, or artifact is unsigned/legacy |
+| `1` | Signature verification failed |
+
+Use exit code 1 in scripts to detect tampered artifacts:
+
+```bash
+stdai verify "$id" || echo "Artifact verification failed"
+```
+
+## Examples
+
+### Verify an artifact
+
+```bash
+stdai verify 01HXYZ1234ABCDEF567890ABCD
+```
+
+**Verified output:**
+
+```
+Artifact  01HXYZ1234ABCDEF567890ABCD
+Signer    stdai:a3b7c9d8e1f2345678901234567890ab12345678 (my-agent)
+Status    verified ✓
+```
+
+**Failed output:**
+
+```
+Artifact  01HXYZ1234ABCDEF567890ABCD
+Signer    stdai:a3b7c9d8e1f2345678901234567890ab12345678 (my-agent)
+Status    FAILED — signature does not match
+```
+
+**Unsigned/legacy output:**
+
+```
+Artifact  01HXYZ1234ABCDEF567890ABCD
+Status    unsigned/legacy — no signature to verify
+```
+
+### JSON output
+
+```bash
+stdai verify 01HXYZ1234ABCDEF567890ABCD --json
+```
+
+**Verified:**
+
+```json
+{
+  "id": "01HXYZ1234ABCDEF567890ABCD",
+  "signed": true,
+  "verified": true,
+  "signer_address": "stdai:a3b7c9d8e1f2345678901234567890ab12345678",
+  "signer_label": "my-agent"
+}
+```
+
+**Failed:**
+
+```json
+{
+  "id": "01HXYZ1234ABCDEF567890ABCD",
+  "signed": true,
+  "verified": false,
+  "signer_address": "stdai:a3b7c9d8e1f2345678901234567890ab12345678",
+  "signer_label": "my-agent"
+}
+```
+
+**Unsigned/legacy:**
+
+```json
+{
+  "id": "01HXYZ1234ABCDEF567890ABCD",
+  "signed": false,
+  "status": "unsigned/legacy"
+}
+```
+
+### Verify a full pipeline
+
+```bash
+id1=$(stdai write --kind research --content "OAuth lacks PKCE")
+id2=$(stdai write --kind fact_check --content "Confirmed" --based-on "$id1")
+
+stdai verify "$id1"
+stdai verify "$id2"
+```
+
+<Tip>
+You don't need the signer's identity installed locally to verify an artifact. The signer's public key is embedded in the artifact record at write time, so verification works even if the signing identity is not in your local store.
+</Tip>

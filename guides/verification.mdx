@@ -1,0 +1,161 @@
+---
+title: "Signature verification"
+description: "Verify artifact integrity and trace signer identity"
+---
+
+Every artifact written by stdai is cryptographically signed with an Ed25519
+identity. Signatures let you detect tampering and attribute work to a specific
+signer — whether that is a human, an agent, or an automated process.
+
+## Why verification matters
+
+Signing provides two guarantees:
+
+- **Tamper detection**: modifying an artifact's content or metadata after
+  signing breaks verification. You can detect if an artifact was altered.
+- **Attribution**: the signer address is stored with the artifact, so you can
+  trace who (or which agent) produced a given piece of work.
+
+## Verifying an artifact
+
+```bash
+stdai verify 01HXYZ...
+```
+
+Output:
+
+```
+Artifact  01HXYZ...
+Signer    stdai:a3b7c9d8e1f2... (security-auditor)
+Status    verified ✓
+```
+
+Exit code 0 means the signature is valid (or the artifact is unsigned/legacy —
+see below). Exit code 1 means verification failed.
+
+## What verification checks
+
+The signature covers:
+
+- **Content hash** (SHA-256 of the artifact content)
+- **Kind** (e.g. `research`, `fact_check`, `decision`)
+- **`created_at`** timestamp
+- **`agent_id`** (the `--agent` flag value, if set)
+
+Any modification to these fields after signing will cause verification to fail.
+
+## JSON output
+
+Use `--json` for programmatic verification:
+
+```bash
+stdai verify 01HXYZ... --json
+```
+
+Output for a verified artifact:
+
+```json
+{
+  "id": "01HXYZ...",
+  "signed": true,
+  "verified": true,
+  "signer_address": "stdai:a3b7c9d8e1f2...",
+  "signer_label": "security-auditor"
+}
+```
+
+Output for a failed verification:
+
+```json
+{
+  "id": "01HXYZ...",
+  "signed": true,
+  "verified": false,
+  "signer_address": "stdai:a3b7c9d8e1f2...",
+  "signer_label": null
+}
+```
+
+Output for an unsigned/legacy artifact:
+
+```json
+{
+  "id": "01HXYZ...",
+  "signed": false,
+  "status": "unsigned/legacy"
+}
+```
+
+## Unsigned and legacy artifacts
+
+Artifacts written with stdai v1.1 or earlier have no signature. `stdai verify`
+returns exit code 0 for these artifacts and reports `unsigned/legacy` — it does
+not treat missing signatures as failures.
+
+<Note>
+Mandatory signing was introduced in v1.2.0. Any artifact written with v1.2.0 or
+later is signed. Artifacts from earlier versions remain accessible with their
+original (unsigned) state.
+</Note>
+
+## Trust model
+
+<Note>
+stdai uses a **local honor system**. Any local process that can read
+`~/.stdai/identities/<address>/secret.key` can sign as that identity.
+Signatures prove that content has not been tampered with after signing — they
+do not prove that only one specific person or process could have produced them.
+For a shared or multi-user environment, protect the `~/.stdai/identities/`
+directory with appropriate file system permissions.
+</Note>
+
+## Verifying a lineage chain
+
+To verify the integrity of a full provenance chain, verify each artifact in the
+chain individually. Use `stdai upstream` to discover the chain first:
+
+```bash
+# Find all ancestors of a decision artifact
+stdai upstream 01HDECISION... --recursive --json
+
+# Verify each artifact in the chain
+stdai verify 01HRESEARCH... --json
+stdai verify 01HFACTCHECK... --json
+stdai verify 01HDECISION... --json
+```
+
+You can script this to verify an entire lineage automatically:
+
+```bash
+# Collect all ancestor IDs and verify each one
+stdai upstream 01HDECISION... --recursive --json \
+  | jq -r '.[].id' \
+  | xargs -I{} stdai verify {} --json
+```
+
+## Importing external public keys
+
+If another agent or machine produced artifacts you want to verify locally,
+import their public key first:
+
+```bash
+# On the remote machine: export the public key
+stdai identity export stdai:a3b7c9d8e1f2...
+# → prints 64 hex chars
+
+# On your machine: import it
+stdai identity import --pubkey <64-hex-chars> --label "remote-agent"
+```
+
+Once imported, `stdai verify` can resolve the signer label and confirm the
+signature against the imported public key.
+
+```bash
+stdai verify 01HXYZ... --json
+# "signer_label": "remote-agent"
+```
+
+<Tip>
+Use `stdai identity list --json` to see all local identities, including any
+imported verification-only keys.
+</Tip>

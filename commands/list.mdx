@@ -1,0 +1,111 @@
+---
+title: "stdai list"
+description: "List recent artifacts"
+---
+
+`stdai list` shows your most recent artifacts in reverse chronological order. Results are scoped to the current project by default. Combine filters to narrow the listing.
+
+## Flags
+
+<ParamField path="--kind" type="string">
+  Show only artifacts of this kind (e.g. `research`, `note`, `decision`).
+</ParamField>
+
+<ParamField path="--tag" type="string">
+  Show only artifacts with this tag.
+</ParamField>
+
+<ParamField path="--limit" type="integer" default="20">
+  Maximum number of artifacts to return.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output results as a JSON array.
+</ParamField>
+
+<ParamField path="--all" type="boolean">
+  List artifacts from all projects instead of just the current one.
+</ParamField>
+
+<ParamField path="--project" type="string">
+  List artifacts from a specific project by name, regardless of your current directory.
+</ParamField>
+
+## Project scope
+
+By default, `list` shows artifacts from the project stdai detects for your current working directory:
+
+1. `$STDAI_PROJECT` environment variable
+2. Git repo name (basename of `git rev-parse --show-toplevel`)
+3. Current working directory basename
+
+Use `--all` to remove the project filter entirely. Use `--project <name>` to list from a specific project without changing directories.
+
+## Examples
+
+### List recent artifacts in the current project
+
+```bash
+stdai list
+```
+
+### List across all projects
+
+```bash
+stdai list --all
+```
+
+### List from a specific project
+
+```bash
+stdai list --project payments-service
+```
+
+### Filter by kind
+
+```bash
+stdai list --kind research
+```
+
+### Filter by tag
+
+```bash
+stdai list --tag security
+```
+
+### Increase the limit
+
+```bash
+stdai list --tag security --limit 50
+```
+
+### JSON output
+
+```bash
+stdai list --kind research --json
+```
+
+```json
+[
+  {
+    "id": "01HXYZ1234ABCDEF567890ABCD",
+    "kind": "research",
+    "name": "OAuth analysis",
+    "preview": "OAuth token refresh lacks PKCE on all endpoints...",
+    "created_at": "2024-01-15T10:30:00Z",
+    "project": "my-api",
+    "tags": ["security"],
+    "based_on": []
+  },
+  {
+    "id": "01HABC9876FEDCBA210987FEDC",
+    "kind": "research",
+    "name": null,
+    "preview": "Session middleware reads role from unvalidated claim...",
+    "created_at": "2024-01-14T09:15:00Z",
+    "project": "my-api",
+    "tags": ["auth"],
+    "based_on": []
+  }
+]
+```

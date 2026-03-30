@@ -1,0 +1,162 @@
+---
+title: "Migration from v0.x"
+description: "Migrate from per-project storage to the global store"
+---
+
+stdai v1.1 replaced per-project `.stdai/` directories with a single global store at `~/.stdai/`. If you have artifacts from v0.x, they are migrated automatically — no manual action is required for most users.
+
+<Note>
+Migration is non-destructive. Your original `.stdai/` directory is renamed to
+`.stdai.migrated/`, not deleted. You can inspect it or remove it manually after
+you have verified the migration.
+</Note>
+
+## What changed
+
+| | v0.x | v1.1+ |
+|---|---|---|
+| **Store location** | `.stdai/` at git repo root or cwd | `~/.stdai/` (global, shared across all projects) |
+| **Project tagging** | Implicit — per-directory | Explicit — every artifact carries a `project` field |
+| **`find` / `list` scope** | Local directory only | Current project by default; `--all` for global |
+| **`show` / `upstream` / `downstream`** | Local only | Always global — IDs are unique across projects |
+
+## Automatic migration
+
+On first use after upgrading to v1.1 or later, stdai checks whether the current
+project has a legacy `.stdai/` directory. If it finds one, it migrates it
+automatically before processing your command.
+
+What happens during migration:
+
+- Artifact content (the object store) is copied into `~/.stdai/objects/`
+- Artifact metadata, tags, and lineage links are imported into `~/.stdai/stdai.db`
+- Full-text search index entries are rebuilt in the global database
+- The original `.stdai/` directory is renamed to `.stdai.migrated/`
+
+Migration is idempotent: duplicate artifact IDs and content-addressed objects are
+silently skipped, so running it multiple times is safe.
+
+You will see progress messages on stderr:
+
+```bash
+stdai: migrating legacy workspace from /your/project/.stdai ...
+stdai: migrated 42 artifact(s) to global store
+stdai: legacy workspace moved to /your/project/.stdai.migrated
+```
+
+## Verifying the migration
+
+After migrating, confirm that your artifacts are accessible in the global store.
+
+<Steps>
+  <Step title="Check that your project appears in the global store">
+    ```bash
+    stdai projects
+    ```
+    Your project should appear in the list with the correct artifact count.
+  </Step>
+
+  <Step title="Confirm the current project context is detected correctly">
+    ```bash
+    stdai context
+    ```
+    Verify that the store path shows `~/.stdai/` (or your `$STDAI_HOME`) and
+    that the project name matches what you expect.
+  </Step>
+
+  <Step title="List artifacts from the migrated project">
+    ```bash
+    stdai list --all
+    ```
+    You should see your historical artifacts. If you know the project name, you
+    can filter to it directly:
+    ```bash
+    stdai list --project <your-project-name>
+    ```
+  </Step>
+
+  <Step title="Spot-check a specific artifact">
+    Copy an artifact ID from the list output and verify it is fully accessible:
+    ```bash
+    stdai show <artifact-id>
+    ```
+  </Step>
+
+  <Step title="Remove the legacy directory once satisfied">
+    ```bash
+    rm -rf /your/project/.stdai.migrated
+    ```
+    Only do this after you are confident the migration succeeded.
+  </Step>
+</Steps>
+
+## Legacy and unsigned artifacts (pre-v1.2)
+
+v1.2 made signing mandatory — all new writes require an identity. Artifacts
+written before v1.2 (with v0.x or v1.1) were not signed and have `NULL` values
+in the `signature`, `signer_address`, and `signer_pubkey` columns.
+
+These legacy artifacts remain fully accessible:
+
+- `stdai show` displays them normally, noting that they are unsigned
+- `stdai find` and `stdai list` return them alongside signed artifacts
+- `stdai verify` returns **exit code 0** for unsigned/legacy artifacts with a
+  note indicating no signature is present — it does not treat the absence of a
+  signature as a verification failure
+
+```bash
+# Works for both signed and unsigned artifacts
+stdai show 01HXYZ...
+
+# Returns exit code 0 with a note for unsigned artifacts
+stdai verify 01HXYZ...
+```
+
+<Note>
+`stdai verify` returning exit code 0 for an unsigned artifact means "this
+artifact has no signature to check — it predates mandatory signing." Exit
+code 1 means an existing signature failed to verify, which indicates tampering.
+</Note>
+
+## If migration fails
+
+Migration runs automatically and prints a warning to stderr if something goes
+wrong — it never silently corrupts data or blocks your command. The most common
+causes of a partial migration are filesystem permission errors or a corrupt
+legacy database.
+
+If you see a migration warning, you can diagnose the store state with:
+
+```bash
+stdai doctor
+```
+
+To migrate a specific project manually, run any stdai command from inside that
+project's directory. The migration triggers on `Workspace::open()`, which runs
+on every command invocation.
+
+<Warning>
+If the `.stdai.migrated/` directory already exists when migration runs (for
+example, from a previous failed attempt), it is removed and replaced. This
+means the renamed directory always reflects the most recent migration attempt.
+If you want to preserve a previous `.stdai.migrated/` backup, move or rename
+it before running stdai again.
+</Warning>
+
+## v1.1 to v1.2: mandatory signing
+
+If you are upgrading from v1.1 to v1.2, the only breaking change is that
+`stdai write` now requires a signing identity. Anonymous writes no longer work.
+
+```bash
+# Create an identity (one time per machine or agent)
+stdai identity new --label "my-agent"
+# → Created identity:
+# →   address: stdai:a3b7c9d8e1f2...
+
+# Set it for your session
+export STDAI_IDENTITY=stdai:a3b7c9d8e1f2...
+```
+
+Everything else — artifact access, search, lineage, legacy artifact
+compatibility — works exactly as it did in v1.1.
